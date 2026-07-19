@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"image"
-	_ "image/jpeg"
 	"image/color"
 	"image/jpeg"
 	"net/http"
@@ -37,6 +36,10 @@ func fakeImmichServer(t *testing.T) *httptest.Server {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/search/random", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode([]map[string]any{{"id": "test-asset-id", "type": "IMAGE"}})
 	})

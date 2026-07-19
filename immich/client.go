@@ -2,6 +2,7 @@
 package immich
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -36,11 +37,20 @@ func NewClient(baseURL, apiKey string) *Client {
 
 // RandomAsset returns a single random IMAGE asset from the Immich server.
 func (c *Client) RandomAsset() (*Asset, error) {
-	url := c.baseURL + "/api/search/random?count=1"
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	url := c.baseURL + "/api/search/random"
+	body, err := json.Marshal(map[string]any{
+		"size": 1,
+		"type": "IMAGE",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal request body: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", c.apiKey)
 
 	resp, err := c.httpClient.Do(req)
