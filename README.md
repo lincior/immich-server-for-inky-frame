@@ -41,6 +41,29 @@ go build -o immich-inky-frame .
 The server starts on port `8080` by default.  Point the Inky Frame at
 `http://<server-host>:8080/image`.
 
+## Deploying as a systemd service
+
+[`immich-inky-frame.service`](immich-inky-frame.service) is a template unit
+file with `__APP_USER__` / `__APP_DIR__` placeholders so it works unmodified
+on any machine. Build the binary, then substitute and install it in one step
+from inside the repo directory:
+
+```bash
+go build -o immich-inky-frame .
+
+sed -e "s|__APP_USER__|$(whoami)|" \
+    -e "s|__APP_DIR__|$(pwd)|" \
+    immich-inky-frame.service | sudo tee /etc/systemd/system/immich-inky-frame.service
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now immich-inky-frame
+```
+
+Env vars are read from the `.env` file in the repo directory
+(`EnvironmentFile=`), so no need to duplicate them in the unit file. After
+pulling changes and rebuilding, restart with
+`sudo systemctl restart immich-inky-frame`.
+
 ## Development
 
 ```bash
