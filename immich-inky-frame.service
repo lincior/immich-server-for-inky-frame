@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 User=__APP_USER__
 WorkingDirectory=__APP_DIR__
+Environment=GIN_MODE=release
 EnvironmentFile=__APP_DIR__/.env
 ExecStart=__APP_DIR__/immich-inky-frame
 Restart=on-failure

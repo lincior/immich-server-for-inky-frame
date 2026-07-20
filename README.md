@@ -23,9 +23,10 @@ All configuration is via environment variables:
 
 | Variable        | Required | Default | Description                                   |
 |-----------------|----------|---------|-----------------------------------------------|
-| `IMMICH_URL`    | ✅       | —       | Base URL of the Immich server, e.g. `http://immich.local:2283` |
-| `IMMICH_API_KEY`| ✅       | —       | Immich API key (Settings → API Keys)          |
-| `PORT`          | ❌       | `8080`  | Port the server listens on                    |
+| `IMMICH_URL`     | ✅       | —       | Base URL of the Immich server, e.g. `http://immich.local:2283` |
+| `IMMICH_API_KEY` | ✅       | —       | Immich API key (Settings → API Keys)          |
+| `PORT`           | ❌       | `8080`  | Port the server listens on                    |
+| `ALLOWED_NETWORK`| ✅       | —       | CIDR range allowed to reach the server, e.g. `192.168.1.0/24`. Requests from any other client IP get a 403. |
 
 ## Running
 
