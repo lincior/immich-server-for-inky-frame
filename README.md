@@ -26,7 +26,20 @@ All configuration is via environment variables:
 | `IMMICH_URL`     | ✅       | —       | Base URL of the Immich server, e.g. `http://immich.local:2283` |
 | `IMMICH_API_KEY` | ✅       | —       | Immich API key (Settings → API Keys)          |
 | `PORT`           | ❌       | `8080`  | Port the server listens on                    |
-| `ALLOWED_NETWORK`| ✅       | —       | CIDR range allowed to reach the server, e.g. `192.168.1.0/24`. Requests from any other client IP get a 403. |
+| `ALLOWED_NETWORK`| ✅       | —       | One or more allowed CIDRs (comma-separated), or `auto` to allow all subnets configured on local network interfaces. Requests from any other client IP get a 403. |
+
+Examples:
+
+```bash
+# Allow your current local interface subnets automatically (recommended for home Wi-Fi)
+ALLOWED_NETWORK=auto
+
+# Allow only one explicit LAN subnet
+ALLOWED_NETWORK=192.168.1.0/24
+
+# Allow LAN subnet plus IPv6 localhost for local curl tests
+ALLOWED_NETWORK=192.168.1.0/24,::1/128
+```
 
 ## Running
 

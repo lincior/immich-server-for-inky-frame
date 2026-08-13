@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -51,20 +52,120 @@ func buildImageHandler(immichURL, apiKey string) gin.HandlerFunc {
 	}
 }
 
-// restrictToNetwork returns a Gin middleware that rejects requests whose
-// client IP falls outside network. It relies on c.ClientIP() reading the
-// real socket address rather than a client-supplied header, so callers must
-// have disabled proxy trust (see SetTrustedProxies below); otherwise this
-// check could be bypassed via a spoofed X-Forwarded-For.
-func restrictToNetwork(network *net.IPNet) gin.HandlerFunc {
+// restrictToNetworks returns a Gin middleware that rejects requests whose
+// client IP falls outside every configured network. It relies on c.ClientIP()
+// reading the real socket address rather than a client-supplied header, so
+// callers must have disabled proxy trust (see SetTrustedProxies below);
+// otherwise this check could be bypassed via a spoofed X-Forwarded-For.
+func restrictToNetworks(networks []*net.IPNet) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := net.ParseIP(c.ClientIP())
-		if ip == nil || !network.Contains(ip) {
+		if ip == nil {
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
-		c.Next()
+
+		for _, network := range networks {
+			if network.Contains(ip) {
+				c.Next()
+				return
+			}
+		}
+
+		c.AbortWithStatus(http.StatusForbidden)
 	}
+}
+
+func parseAllowedNetworks(value string) ([]*net.IPNet, error) {
+	tokens := strings.Split(value, ",")
+	networks := make([]*net.IPNet, 0, len(tokens))
+	seen := make(map[string]struct{})
+
+	for _, token := range tokens {
+		entry := strings.TrimSpace(token)
+		if entry == "" {
+			continue
+		}
+
+		if strings.EqualFold(entry, "auto") {
+			autoNetworks, err := localInterfaceNetworks()
+			if err != nil {
+				return nil, err
+			}
+			for _, network := range autoNetworks {
+				key := network.String()
+				if _, ok := seen[key]; ok {
+					continue
+				}
+				seen[key] = struct{}{}
+				networks = append(networks, network)
+			}
+			continue
+		}
+
+		_, network, err := net.ParseCIDR(entry)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ALLOWED_NETWORK entry %q: %w", entry, err)
+		}
+
+		key := network.String()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		networks = append(networks, network)
+	}
+
+	if len(networks) == 0 {
+		return nil, fmt.Errorf("ALLOWED_NETWORK did not produce any CIDR entries")
+	}
+
+	return networks, nil
+}
+
+func localInterfaceNetworks() ([]*net.IPNet, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("list interfaces: %w", err)
+	}
+
+	seen := make(map[string]struct{})
+	networks := make([]*net.IPNet, 0)
+
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return nil, fmt.Errorf("list addresses for interface %s: %w", iface.Name, err)
+		}
+
+		for _, addr := range addrs {
+			ipNet, ok := addr.(*net.IPNet)
+			if !ok {
+				continue
+			}
+
+			key := ipNet.String()
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			networks = append(networks, ipNet)
+		}
+	}
+
+	if len(networks) == 0 {
+		return nil, fmt.Errorf("no local interface networks discovered")
+	}
+
+	sort.Slice(networks, func(i, j int) bool {
+		return networks[i].String() < networks[j].String()
+	})
+
+	return networks, nil
 }
 
 func main() {
@@ -83,13 +184,14 @@ func main() {
 		port = "8080"
 	}
 
-	allowedNetworkCIDR := os.Getenv("ALLOWED_NETWORK")
-	if allowedNetworkCIDR == "" {
-		log.Fatal("ALLOWED_NETWORK environment variable is required (e.g. 192.168.1.0/24)")
+	allowedNetworkSpec := os.Getenv("ALLOWED_NETWORK")
+	if allowedNetworkSpec == "" {
+		log.Fatal("ALLOWED_NETWORK environment variable is required (e.g. 192.168.1.0/24 or auto)")
 	}
-	_, allowedNetwork, err := net.ParseCIDR(allowedNetworkCIDR)
+
+	allowedNetworks, err := parseAllowedNetworks(allowedNetworkSpec)
 	if err != nil {
-		log.Fatalf("invalid ALLOWED_NETWORK %q: %v", allowedNetworkCIDR, err)
+		log.Fatalf("invalid ALLOWED_NETWORK %q: %v", allowedNetworkSpec, err)
 	}
 
 	r := gin.Default()
@@ -101,7 +203,7 @@ func main() {
 		log.Fatalf("failed to configure trusted proxies: %v", err)
 	}
 
-	r.Use(restrictToNetwork(allowedNetwork))
+	r.Use(restrictToNetworks(allowedNetworks))
 
 	// GET /image — returns an 800×480 JPEG from a random Immich asset, sized
 	// for the Pimoroni Inky Frame 7.3-inch ePaper display.
