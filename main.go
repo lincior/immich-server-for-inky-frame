@@ -59,8 +59,9 @@ func buildImageHandler(immichURL, apiKey string) gin.HandlerFunc {
 // otherwise this check could be bypassed via a spoofed X-Forwarded-For.
 func restrictToNetworks(networks []*net.IPNet) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ip := parseClientIP(c.ClientIP())
+		rawIP, ip := resolveClientIP(c)
 		if ip == nil {
+			log.Printf("blocking request: client ip could not be parsed (gin=%q remote=%q resolved=%q)", c.ClientIP(), c.Request.RemoteAddr, rawIP)
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
@@ -72,16 +73,53 @@ func restrictToNetworks(networks []*net.IPNet) gin.HandlerFunc {
 			}
 		}
 
+		log.Printf("blocking request: client ip gin=%q remote=%q resolved=%q parsed=%s not in allowed networks=%s", c.ClientIP(), c.Request.RemoteAddr, rawIP, ip.String(), strings.Join(networkStrings(networks), ","))
 		c.AbortWithStatus(http.StatusForbidden)
 	}
 }
 
+func networkStrings(networks []*net.IPNet) []string {
+	parts := make([]string, 0, len(networks))
+	for _, n := range networks {
+		parts = append(parts, n.String())
+	}
+	return parts
+}
+
 func parseClientIP(raw string) net.IP {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "[")
+	raw = strings.TrimSuffix(raw, "]")
+
 	// Strip IPv6 zone identifiers (e.g. fe80::1%wlan0) before parsing.
 	if idx := strings.Index(raw, "%"); idx >= 0 {
 		raw = raw[:idx]
 	}
 	return net.ParseIP(raw)
+}
+
+func parseRemoteAddrIP(remoteAddr string) string {
+	addr := strings.TrimSpace(remoteAddr)
+	if addr == "" {
+		return ""
+	}
+
+	host, _, err := net.SplitHostPort(addr)
+	if err == nil {
+		return host
+	}
+
+	// Fallback for malformed or non-host:port remote addresses.
+	return addr
+}
+
+func resolveClientIP(c *gin.Context) (string, net.IP) {
+	if ginIP := strings.TrimSpace(c.ClientIP()); ginIP != "" {
+		return ginIP, parseClientIP(ginIP)
+	}
+
+	raw := parseRemoteAddrIP(c.Request.RemoteAddr)
+	return raw, parseClientIP(raw)
 }
 
 func parseAllowedNetworks(value string) ([]*net.IPNet, error) {
@@ -201,6 +239,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("invalid ALLOWED_NETWORK %q: %v", allowedNetworkSpec, err)
 	}
+	log.Printf("resolved ALLOWED_NETWORK=%q to: %s", allowedNetworkSpec, strings.Join(networkStrings(allowedNetworks), ","))
 
 	r := gin.Default()
 

@@ -97,6 +97,7 @@ func TestParseClientIP(t *testing.T) {
 		{name: "ipv4", raw: "192.168.1.20", want: "192.168.1.20"},
 		{name: "ipv6", raw: "2001:db8::1", want: "2001:db8::1"},
 		{name: "scoped ipv6", raw: "fe80::1234%wlan0", want: "fe80::1234"},
+		{name: "bracketed scoped ipv6", raw: "[fe80::1234%wlan0]", want: "fe80::1234"},
 		{name: "invalid", raw: "not-an-ip", want: ""},
 	}
 
@@ -117,6 +118,28 @@ func TestParseClientIP(t *testing.T) {
 
 			if got == nil || !got.Equal(wantIP) {
 				t.Fatalf("parseClientIP(%q) = %v, want %v", tc.raw, got, wantIP)
+			}
+		})
+	}
+}
+
+func TestParseRemoteAddrIP(t *testing.T) {
+	tests := []struct {
+		name       string
+		remoteAddr string
+		want       string
+	}{
+		{name: "ipv4 host port", remoteAddr: "192.168.1.16:50123", want: "192.168.1.16"},
+		{name: "ipv6 host port", remoteAddr: "[fe80::abcd%wlan0]:50123", want: "fe80::abcd%wlan0"},
+		{name: "already host", remoteAddr: "fe80::abcd%wlan0", want: "fe80::abcd%wlan0"},
+		{name: "empty", remoteAddr: "", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseRemoteAddrIP(tc.remoteAddr)
+			if got != tc.want {
+				t.Fatalf("parseRemoteAddrIP(%q) = %q, want %q", tc.remoteAddr, got, tc.want)
 			}
 		})
 	}
