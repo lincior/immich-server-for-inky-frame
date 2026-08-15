@@ -59,7 +59,7 @@ func buildImageHandler(immichURL, apiKey string) gin.HandlerFunc {
 // otherwise this check could be bypassed via a spoofed X-Forwarded-For.
 func restrictToNetworks(networks []*net.IPNet) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ip := net.ParseIP(c.ClientIP())
+		ip := parseClientIP(c.ClientIP())
 		if ip == nil {
 			c.AbortWithStatus(http.StatusForbidden)
 			return
@@ -74,6 +74,14 @@ func restrictToNetworks(networks []*net.IPNet) gin.HandlerFunc {
 
 		c.AbortWithStatus(http.StatusForbidden)
 	}
+}
+
+func parseClientIP(raw string) net.IP {
+	// Strip IPv6 zone identifiers (e.g. fe80::1%wlan0) before parsing.
+	if idx := strings.Index(raw, "%"); idx >= 0 {
+		raw = raw[:idx]
+	}
+	return net.ParseIP(raw)
 }
 
 func parseAllowedNetworks(value string) ([]*net.IPNet, error) {

@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -84,5 +85,39 @@ func TestImageEndpoint(t *testing.T) {
 	if b.Dx() != imaging.InkyFrameWidth || b.Dy() != imaging.InkyFrameHeight {
 		t.Errorf("response image size = %dx%d, want %dx%d",
 			b.Dx(), b.Dy(), imaging.InkyFrameWidth, imaging.InkyFrameHeight)
+	}
+}
+
+func TestParseClientIP(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "ipv4", raw: "192.168.1.20", want: "192.168.1.20"},
+		{name: "ipv6", raw: "2001:db8::1", want: "2001:db8::1"},
+		{name: "scoped ipv6", raw: "fe80::1234%wlan0", want: "fe80::1234"},
+		{name: "invalid", raw: "not-an-ip", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseClientIP(tc.raw)
+			if tc.want == "" {
+				if got != nil {
+					t.Fatalf("parseClientIP(%q) = %v, want nil", tc.raw, got)
+				}
+				return
+			}
+
+			wantIP := net.ParseIP(tc.want)
+			if wantIP == nil {
+				t.Fatalf("test setup error: invalid want IP %q", tc.want)
+			}
+
+			if got == nil || !got.Equal(wantIP) {
+				t.Fatalf("parseClientIP(%q) = %v, want %v", tc.raw, got, wantIP)
+			}
+		})
 	}
 }
